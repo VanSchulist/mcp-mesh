@@ -1,0 +1,53 @@
+name: 🐛 Bug Report
+description: Report an issue, tool discovery failure, or unexpected gateway behavior
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue in `mcp-mesh`!
+  - type: input
+    id: environment
+    attributes:
+      label: Operating System & Python Version
+      description: What OS and Python version are you running?
+      placeholder: e.g. macOS Sonoma / Python 3.12.2
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP Host Client
+      description: Which client is connecting to mcp-mesh?
+      options:
+        - Claude Desktop
+        - Cursor IDE
+        - Antigravity
+        - Cline
+        - Standalone CLI / Custom Agent
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps or commands to reproduce the behavior.
+      placeholder: |
+        1. Configured upstream server 'postgres'
+        2. Started gateway via 'python main.py run'
+        3. Issued mesh_search_tools query
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Gateway Stderr / Terminal Output
+      description: Paste any stderr output or exception tracebacks.
+      render: shell

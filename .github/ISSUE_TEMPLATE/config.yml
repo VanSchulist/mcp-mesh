@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Existential Cloud Official Portal
+    url: https://existentialcloud.ccwu.cc
+    about: Explore documentation, interactive token simulator, and ecosystem roadmap.
+  - name: Studio Governance & Research
+    url: https://github.com/VanSchulist/github-ai-studio
+    about: Read Architecture Decision Records and submit cross-project RFCs.

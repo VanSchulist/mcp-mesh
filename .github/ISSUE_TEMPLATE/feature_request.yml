@@ -1,0 +1,34 @@
+name: 💡 Feature Request
+description: Propose a new capability, transport protocol, or optimization for mcp-mesh
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We welcome proposals for extending `mcp-mesh` while preserving our zero-dependency standard!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a specific problem or bottleneck?
+      placeholder: "e.g. When dealing with 200+ tools, BM25 keyword matching could benefit from..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution or new architecture you'd like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative implementations or workarounds you've explored.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Contribution Readiness
+      options:
+        - label: I am willing to submit a Pull Request for this feature.
