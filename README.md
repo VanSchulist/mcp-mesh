@@ -3,10 +3,12 @@
 > **The Dynamic Model Context Protocol Gateway & Lazy Tool Router**  
 > Aggregate 50+ upstream MCP servers, eliminate tool schema context bloat, and slash Turn-0 token consumption by 85–95% with zero external dependencies.
 
+[![Official Portal](https://img.shields.io/badge/Website-existentialcloud.ccwu.cc-8A2BE2?style=flat-square)](https://existentialcloud.ccwu.cc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Architecture: Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#architecture)
 [![Protocol: MCP](https://img.shields.io/badge/protocol-MCP%202024--11--05-orange.svg)](https://modelcontextprotocol.io/)
+
 
 ---
 
