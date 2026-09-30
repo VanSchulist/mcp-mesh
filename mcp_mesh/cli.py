@@ -10,9 +10,11 @@ import sys
 from typing import Any, Dict, List
 
 from .core import ToolDefinition
+from .doctor import MCPDoctor
 from .indexer import ToolIndexer
 from .proxy import MCPMeshGateway
 from .registry import DownstreamRegistry
+from .sse import run_sse_server
 
 
 def load_demo_tools() -> List[ToolDefinition]:
@@ -215,7 +217,7 @@ def load_demo_tools() -> List[ToolDefinition]:
 def print_banner() -> None:
     banner = (
         "=================================================================\n"
-        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.0.0)\n"
+        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.1.0)\n"
         "  Engineered by Van Schulist (@VanSchulist / Existential Cloud)\n"
         "================================================================="
     )
@@ -326,6 +328,32 @@ def cmd_run(args: argparse.Namespace) -> None:
     gateway.run_stdio()
 
 
+def cmd_doctor(args: argparse.Namespace) -> None:
+    """Runs comprehensive diagnostic health checks on the MCP environment and tools."""
+    print_banner()
+    cfg = args.config if args.config else None
+    doctor = MCPDoctor(config_path=cfg)
+    doctor.run_all()
+    doctor.print_report()
+    if doctor.has_errors:
+        sys.exit(1)
+
+
+def cmd_sse(args: argparse.Namespace) -> None:
+    """Runs the HTTP/SSE streaming gateway daemon."""
+    print_banner()
+    registry = DownstreamRegistry()
+    if args.config and os.path.exists(args.config):
+        count = registry.load_config_file(args.config)
+        sys.stderr.write(f"[mcp-mesh] Loaded {count} server configurations from {args.config}\n")
+    else:
+        for tool in load_demo_tools():
+            registry.indexer.register_tool(tool)
+        sys.stderr.write("[mcp-mesh] No config provided. Loaded default demonstration tools.\n")
+
+    run_sse_server(registry=registry, host=args.host, port=args.port, mode=args.mode)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="mcp-mesh",
@@ -351,6 +379,17 @@ def main() -> None:
     p_inspect = subparsers.add_parser("inspect", help="Inspect full JSON schema for an indexed tool")
     p_inspect.add_argument("tool_key", type=str, help="Tool name or server_id::tool_name")
 
+    # Command: doctor
+    p_doctor = subparsers.add_parser("doctor", help="Run comprehensive diagnostic health check on MCP environment and tools")
+    p_doctor.add_argument("--config", "-c", type=str, default="", help="Path to MCP configuration file")
+
+    # Command: sse
+    p_sse = subparsers.add_parser("sse", help="Start HTTP/SSE streaming gateway daemon for remote/containerized agents")
+    p_sse.add_argument("--config", "-c", type=str, default="", help="Path to MCP configuration file")
+    p_sse.add_argument("--host", "-H", type=str, default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
+    p_sse.add_argument("--port", "-p", type=int, default=8000, help="Port to listen on (default: 8000)")
+    p_sse.add_argument("--mode", "-m", choices=["lazy", "passthrough"], default="lazy", help="Proxy mode (default: lazy)")
+
     # Command: demo
     subparsers.add_parser("demo", help="Run interactive zero-config demonstration and benchmark")
 
@@ -364,6 +403,10 @@ def main() -> None:
         cmd_search(args)
     elif args.subcommand == "inspect":
         cmd_inspect(args)
+    elif args.subcommand == "doctor":
+        cmd_doctor(args)
+    elif args.subcommand == "sse":
+        cmd_sse(args)
     elif args.subcommand == "demo":
         cmd_demo(args)
     else:

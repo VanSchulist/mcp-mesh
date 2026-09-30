@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="900" height="520">
+  <defs>
+    <filter id="windowShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="900" height="520" rx="16" fill="#07090e" />
+
+  <!-- Terminal Window Container -->
+  <g transform="translate(30, 25)" filter="url(#windowShadow)">
+    <!-- Terminal Outer Frame -->
+    <rect width="840" height="470" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1.5" />
+
+    <!-- Terminal Header Bar -->
+    <rect width="840" height="38" rx="12" fill="#161b22" />
+    <rect y="26" width="840" height="12" fill="#161b22" />
+    <line x1="0" y1="38" x2="840" y2="38" stroke="#30363d" stroke-width="1" />
+
+    <!-- Window Control Buttons (macOS style) -->
+    <circle cx="24" cy="19" r="6" fill="#ff5f56" />
+    <circle cx="44" cy="19" r="6" fill="#ffbd2e" />
+    <circle cx="64" cy="19" r="6" fill="#27c93f" />
+
+    <!-- Terminal Title -->
+    <text x="420" y="24" font-family="'JetBrains Mono', 'Fira Code', Menlo, monospace" font-size="12" font-weight="600" fill="#8b949e" text-anchor="middle">
+      vanschulist@existential-cloud: ~/mcp-mesh (feature/doctor-and-lru-cache)
+    </text>
+
+    <!-- Terminal Code Body -->
+    <g transform="translate(25, 68)" font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="13" line-height="1.5">
+      <!-- Command 1: doctor -->
+      <text y="0" fill="#58a6ff" font-weight="700">$ mcp-mesh doctor</text>
+      
+      <text y="24" fill="#8b949e">=================================================================</text>
+      <text y="44" fill="#a5d6ff" font-weight="600">  mcp-mesh doctor: Environment &amp; Upstream Health Diagnostics</text>
+      <text y="64" fill="#8b949e">=================================================================</text>
+
+      <text y="92" fill="#f0883e" font-weight="700">[Runtime]</text>
+      <text y="112" fill="#3fb950">  [+]</text>
+      <text x="35" y="112" fill="#c9d1d9">Python Version: Python 3.14.6</text>
+
+      <text y="136" fill="#f0883e" font-weight="700">[Host Tools]</text>
+      <text y="156" fill="#3fb950">  [+]</text>
+      <text x="35" y="156" fill="#c9d1d9">node, npx, uv, git: Verified in system PATH</text>
+      <text y="176" fill="#d29922">  [!]</text>
+      <text x="35" y="176" fill="#8b949e">docker: Optional (containerized routing)</text>
+
+      <text y="200" fill="#f0883e" font-weight="700">[Configuration &amp; Upstream Probes]</text>
+      <text y="220" fill="#3fb950">  [+]</text>
+      <text x="35" y="220" fill="#c9d1d9">github: Executable verified (latency: 1.2ms)</text>
+      <text y="240" fill="#3fb950">  [+]</text>
+      <text x="35" y="240" fill="#c9d1d9">postgres: Executable verified (latency: 0.9ms)</text>
+      <text y="260" fill="#3fb950">  [+]</text>
+      <text x="35" y="260" fill="#c9d1d9">filesystem: Executable verified (latency: 0.4ms)</text>
+
+      <text y="284" fill="#8b949e">-----------------------------------------------------------------</text>
+      <text y="304" fill="#7ee787" font-weight="700">Diagnostic Summary: 10 passed, 1 warnings, 0 errors. READY.</text>
+
+      <!-- Command 2: demo -->
+      <text y="342" fill="#58a6ff" font-weight="700">$ mcp-mesh stats</text>
+      <text y="364" fill="#c9d1d9">  Connected Servers : 5 (aws, filesystem, github, postgres, slack)</text>
+      <text y="384" fill="#c9d1d9">  Raw Tool Footprint: 2,317 tokens (Turn-0 baseline)</text>
+      <text y="404" fill="#58a6ff" font-weight="700">  Net Tokens Saved  : 1,937 tokens </text>
+      <text x="315" y="404" fill="#3fb950" font-weight="800">(83.6% reduction!)</text>
+    </g>
+  </g>
+</svg>
