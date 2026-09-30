@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "python",
+      "args": ["examples/mock_server.py", "--server", "github"],
+      "description": "GitHub repository and issue management MCP server"
+    },
+    "postgres": {
+      "command": "python",
+      "args": ["examples/mock_server.py", "--server", "postgres"],
+      "description": "PostgreSQL relational database inspection and read-only query server"
+    },
+    "filesystem": {
+      "command": "python",
+      "args": ["examples/mock_server.py", "--server", "filesystem"],
+      "description": "Workspace file access and regex search server"
+    }
+  }
+}
