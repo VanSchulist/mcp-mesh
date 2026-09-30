@@ -2,7 +2,7 @@
 
 > **Production Release v1.0.0**  
 > *Engineered by Van Schulist (@VanSchulist / Existential Cloud)*  
-> Official Developer Portal: [existentialcloud.ccwu.cc](https://existentialcloud.ccwu.cc)
+> Official Developer Portal: [www.existentialcloud.ccwu.cc](https://www.existentialcloud.ccwu.cc)
 
 ---
 
@@ -79,6 +79,6 @@ Every module has been verified with 100% test pass rate:
 ---
 
 ### 🔗 Ecosystem Links
-* **Official Studio Portal**: [https://existentialcloud.ccwu.cc](https://existentialcloud.ccwu.cc)
+* **Official Studio Portal**: [https://www.existentialcloud.ccwu.cc](https://www.existentialcloud.ccwu.cc)
 * **Governance Hub & Roadmap**: [VanSchulist/github-ai-studio](https://github.com/VanSchulist/github-ai-studio)
 * **Author**: Van Schulist ([@VanSchulist](https://github.com/VanSchulist))
