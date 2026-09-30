@@ -4,13 +4,17 @@
 > Aggregate 50+ upstream MCP servers, eliminate tool schema context bloat, and slash Turn-0 token consumption by 85–95% with zero external dependencies.
 
 [![Official Portal](https://img.shields.io/badge/Website-www.existentialcloud.ccwu.cc-8A2BE2?style=flat-square)](https://www.existentialcloud.ccwu.cc)
-[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=purple)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=purple)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.1.0)
 [![CI: Test Suite](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/mcp-mesh.svg?color=blue)](https://pypi.org/project/mcp-mesh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Architecture: Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#architecture)
 [![Protocol: MCP](https://img.shields.io/badge/protocol-MCP%202024--11--05-orange.svg)](https://modelcontextprotocol.io/)
 
+<p align="center">
+  <img src="assets/terminal_demo.svg" alt="mcp-mesh Terminal Demo" width="850">
+</p>
 
 ---
 
@@ -30,7 +34,10 @@ Schemas are loaded lazily on demand. The result? **Turn-0 context overhead drops
 
 ## ✨ Features
 
-* 🚀 **Zero External Dependencies**: Engineered purely with Python 3.10+ standard library (`json`, `subprocess`, `argparse`, `sys`, `dataclasses`). Runs instantly anywhere without `pip install` friction.
+* 🚀 **Zero External Dependencies**: Engineered purely with Python 3.10+ standard library (`json`, `http.server`, `subprocess`, `argparse`, `sys`, `dataclasses`). Runs instantly anywhere without `pip install` friction.
+* 🩺 **`mcp-mesh doctor`**: Built-in environment & health diagnostics engine inspecting host runtimes (`node`, `npx`, `uv`, `git`, `docker`), configuration syntax, and downstream binary availability with latency probes.
+* 🌐 **Server-Sent Events (SSE) & HTTP Transport**: Run `mcp-mesh sse` as a shared team gateway daemon or Docker container for remote agents and cloud IDEs.
+* ⚡ **Dynamic LRU Hot-Tier Schema Cache**: In-memory cache keeps frequently-accessed tool schemas primed for instant multi-turn retrieval with zero lookup overhead.
 * 🔍 **Semantic Keyword Tool Indexer**: Sub-millisecond inverted index with BM25-style keyword and parameter matching across all aggregated upstream servers.
 * ⚡ **Lazy Schema Loading**: Exposes ultra-compact tool signatures (15–30 tokens) during discovery, loading full JSON schemas only when explicitly inspected or invoked.
 * 🔄 **Transparent Stdio Multiplexing**: Connects to your MCP client (Claude Desktop, Cursor, Antigravity, Cline) as a single standard stdio server while supervising downstream child processes.
@@ -77,9 +84,16 @@ Schemas are loaded lazily on demand. The result? **Turn-0 context overhead drops
 
 ## ⚡ Quick Start (5 Minutes)
 
-### 1. Clone & Run Built-in Benchmark Demo
-No dependencies or package installations are required. Clone and execute the demo immediately:
+### Option A: Install from PyPI or Run with UV (Zero Install)
+```bash
+# Direct install from PyPI
+pip install mcp-mesh
 
+# Or execute instantly with zero installation via uvx:
+uvx mcp-mesh demo
+```
+
+### Option B: Clone & Run from Source (Zero External Dependencies)
 ```bash
 git clone https://github.com/VanSchulist/mcp-mesh.git
 cd mcp-mesh
@@ -91,7 +105,7 @@ python main.py demo
 You will see the live economy report:
 ```text
 =================================================================
-  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.0.0)
+  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.1.0)
   Engineered by Van Schulist (@VanSchulist / Existential Cloud)
 =================================================================
 
@@ -118,8 +132,8 @@ Configure `mcp-mesh` as your single master MCP server in your `claude_desktop_co
 {
   "mcpServers": {
     "mcp-mesh": {
-      "command": "python",
-      "args": ["/path/to/mcp-mesh/main.py", "run", "--config", "/path/to/mcp_mesh_config.json"]
+      "command": "mcp-mesh",
+      "args": ["run", "--config", "/path/to/mcp_mesh_config.json"]
     }
   }
 }
@@ -144,7 +158,7 @@ List all your downstream MCP servers in standard JSON format:
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/dev/workspace"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
     }
   }
 }
@@ -154,37 +168,45 @@ List all your downstream MCP servers in standard JSON format:
 
 ## 💻 CLI Commands
 
-`mcp-mesh` includes an ergonomic CLI for diagnostics and discovery:
+`mcp-mesh` includes an ergonomic CLI for diagnostics, remote daemon streaming, and discovery:
 
 ```bash
-# 1. Start gateway in MCP stdio mode
-python main.py run --config mcp_mesh_config.json
+# 1. Environment & Upstream Health Check (flutter-doctor style diagnostics)
+mcp-mesh doctor
+# Or diagnose a specific configuration file:
+mcp-mesh doctor --config mcp_mesh_config.json
 
-# 2. View token savings and server aggregation stats
-python main.py stats
+# 2. Start HTTP/SSE gateway daemon for remote or containerized agents
+mcp-mesh sse --port 8000 --host 0.0.0.0
 
-# 3. Test natural language tool search from terminal
-python main.py search "commit code and create pull request"
+# 3. Start standard MCP stdio proxy gateway for Claude / Cursor / Antigravity
+mcp-mesh run --config mcp_mesh_config.json
 
-# 4. Inspect full JSON schema for an indexed tool
-python main.py inspect github::create_pull_request
+# 4. View token savings and server aggregation stats
+mcp-mesh stats
 
-# 5. Run zero-config demonstration suite
-python main.py demo
+# 5. Test natural language tool search from terminal
+mcp-mesh search "commit code and create pull request"
+
+# 6. Inspect full JSON schema for an indexed tool
+mcp-mesh inspect github::create_pull_request
+
+# 7. Run zero-config demonstration suite
+mcp-mesh demo
 ```
 
 ---
 
 ## 🧪 Testing
 
-The repository maintains a comprehensive automated test suite testing the JSON-RPC engine, keyword indexer, process supervisor, and gateway protocol:
+The repository maintains a comprehensive automated test suite testing the JSON-RPC engine, keyword indexer, dynamic LRU cache, health doctor, SSE transport, and gateway protocol:
 
 ```bash
 # Run all unit tests
 python -m unittest discover -s tests -v
 ```
 
-All tests execute synchronously using standard library `unittest` with zero setup.
+All 36+ tests execute synchronously using standard library `unittest` with zero setup.
 
 ---
 
@@ -192,8 +214,8 @@ All tests execute synchronously using standard library `unittest` with zero setu
 
 `mcp-mesh` serves as the **Flagship Project** of the [Existential Cloud AI Studio](https://github.com/VanSchulist/github-ai-studio).
 
-* [x] **Phase 1: Core Engine (v1.0.0)** - Zero-dependency stdio proxy, token indexer, CLI suite. *(Current)*
-* [ ] **Phase 2: `mcp-mesh-eval` (Satellite 1)** - Benchmark harness evaluating tool-calling accuracy vs token reduction across Claude 3.7, Gemini 2.0, and GPT-4o.
+* [x] **Phase 1: Core Engine (v1.0.0 & v1.1.0)** - Zero-dependency stdio proxy, token indexer, dynamic LRU schema cache, `mcp-mesh doctor`, and SSE remote transport.
+* [x] **Phase 2: `mcp-mesh-eval` (Satellite 1)** - Frontier benchmark harness evaluating 60 tools across September 2026 models (Claude 5.5 Sonnet, GPT-6 Astra, Gemini 3.8 Flash, DeepSeek-V4.1-Flash).
 * [ ] **Phase 3: `mcp-mesh-ui` (Satellite 2)** - Terminal ANSI dashboard and web visualization charting live tool invocations and latency.
 * [ ] **Phase 4: `mcp-registry-cli` (Satellite 3)** - Community package manager to install curated MCP servers in one command.
 

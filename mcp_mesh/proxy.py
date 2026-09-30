@@ -18,6 +18,7 @@ from .core import (
     JSONRPCRequest,
     JSONRPCResponse,
 )
+from .cache import LRUSchemaCache
 from .indexer import ToolIndexer
 from .registry import DownstreamRegistry
 
@@ -34,10 +35,12 @@ class MCPMeshGateway:
         registry: Optional[DownstreamRegistry] = None,
         mode: str = "lazy",
         server_name: str = "mcp-mesh",
-        server_version: str = "1.0.0",
+        server_version: str = "1.1.0",
+        cache_capacity: int = 8,
     ) -> None:
         self.registry = registry or DownstreamRegistry()
         self.indexer: ToolIndexer = self.registry.indexer
+        self.cache = LRUSchemaCache(capacity=cache_capacity)
         self.mode = mode  # "lazy" or "passthrough"
         self.server_name = server_name
         self.server_version = server_version
@@ -257,6 +260,7 @@ class MCPMeshGateway:
         else:
             lines = [f"Found {len(matches)} matching tool(s):"]
             for tool, score in matches:
+                self.cache.put(tool)  # Warm up LRU hot-tier cache
                 lines.append(f"- [{tool.server_id}] {tool.name} (relevance: {score})")
                 lines.append(f"  Signature: {tool.to_compact_signature()}")
                 lines.append(f"  Invoke via: mesh_invoke_tool(server='{tool.server_id}', tool_name='{tool.name}', arguments={{...}})")
@@ -274,7 +278,15 @@ class MCPMeshGateway:
         if not server or not tool_name:
             return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'server' and 'tool_name' are required.")
 
-        tool = self.indexer.get_tool(f"{server}::{tool_name}")
+        tool_key = f"{server}::{tool_name}"
+        # 1. Check LRU Hot-Tier Cache first
+        tool = self.cache.get(tool_key)
+        if not tool:
+            # 2. Fall back to indexer
+            tool = self.indexer.get_tool(tool_key)
+            if tool:
+                self.cache.put(tool)
+
         if not tool:
             return JSONRPCResponse.make_error(req_id, TOOL_NOT_FOUND, f"Tool '{tool_name}' on server '{server}' not found.")
 
@@ -292,6 +304,14 @@ class MCPMeshGateway:
         if not server or not tool_name:
             return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'server' and 'tool_name' are required.")
 
+        # Keep invoked tool hot in LRU cache
+        tool_key = f"{server}::{tool_name}"
+        cached_tool = self.cache.get(tool_key)
+        if not cached_tool:
+            tool = self.indexer.get_tool(tool_key)
+            if tool:
+                self.cache.put(tool)
+
         res = self.registry.call_tool(server, tool_name, tool_args)
         if "error" in res:
             err = res["error"]
@@ -306,13 +326,16 @@ class MCPMeshGateway:
 
     def _exec_mesh_status(self, req_id: Optional[Union[str, int]]) -> JSONRPCResponse:
         metrics = self.indexer.get_metrics()
+        cache_stats = self.cache.get_stats()
         report = (
             f"=== mcp-mesh Gateway Status ===\n"
-            f"• Connected Servers : {metrics['total_servers']} ({', '.join(metrics['server_ids']) or 'none'})\n"
-            f"• Indexed Tools     : {metrics['total_tools']}\n"
-            f"• Raw Tools Tokens  : {metrics['raw_tool_tokens']} tokens\n"
-            f"• Gateway Overhead  : {metrics['gateway_meta_tokens']} tokens\n"
-            f"• Turn-0 Reduction  : {metrics['tokens_saved']} tokens ({metrics['savings_percentage']}% saved)\n"
+            f"- Connected Servers : {metrics['total_servers']} ({', '.join(metrics['server_ids']) or 'none'})\n"
+            f"- Indexed Tools     : {metrics['total_tools']}\n"
+            f"- Raw Tools Tokens  : {metrics['raw_tool_tokens']} tokens\n"
+            f"- Gateway Overhead  : {metrics['gateway_meta_tokens']} tokens\n"
+            f"- Turn-0 Reduction  : {metrics['tokens_saved']} tokens ({metrics['savings_percentage']}% saved)\n"
+            f"- LRU Hot Cache     : {cache_stats['cached_count']}/{cache_stats['capacity']} tools "
+            f"(Hit Ratio: {cache_stats['hit_ratio_percent']}%)\n"
         )
         return JSONRPCResponse.make_result(
             req_id,

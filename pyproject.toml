@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-mesh"
-version = "1.0.0"
+version = "1.1.0"
 description = "The Dynamic Model Context Protocol Gateway & Lazy Tool Router"
 readme = "README.md"
 authors = [
@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
@@ -31,6 +32,10 @@ dependencies = []
 mcp-mesh = "mcp_mesh.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/VanSchulist/mcp-mesh"
+Homepage = "https://www.existentialcloud.ccwu.cc"
 Repository = "https://github.com/VanSchulist/mcp-mesh.git"
+Documentation = "https://www.existentialcloud.ccwu.cc"
 Issues = "https://github.com/VanSchulist/mcp-mesh/issues"
+
+[tool.setuptools.packages.find]
+include = ["mcp_mesh*"]

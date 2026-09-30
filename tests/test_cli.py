@@ -5,7 +5,7 @@ import io
 import sys
 import unittest
 from unittest.mock import patch
-from mcp_mesh.cli import cmd_demo, cmd_search, cmd_stats, load_demo_tools
+from mcp_mesh.cli import cmd_demo, cmd_doctor, cmd_search, cmd_stats, load_demo_tools
 import argparse
 
 
@@ -41,6 +41,14 @@ class TestCLI(unittest.TestCase):
             cmd_search(argparse.Namespace(query="git pull request", limit=2))
         output = captured_out.getvalue()
         self.assertIn("create_pull_request", output)
+
+    def test_cmd_doctor(self):
+        captured_out = io.StringIO()
+        with patch("sys.stdout", captured_out):
+            cmd_doctor(argparse.Namespace(config=""))
+        output = captured_out.getvalue()
+        self.assertIn("mcp-mesh doctor", output)
+        self.assertIn("Runtime", output)
 
 
 if __name__ == "__main__":
