@@ -36,3 +36,6 @@ Homepage = "https://www.existentialcloud.ccwu.cc"
 Repository = "https://github.com/VanSchulist/mcp-mesh.git"
 Documentation = "https://www.existentialcloud.ccwu.cc"
 Issues = "https://github.com/VanSchulist/mcp-mesh/issues"
+
+[tool.setuptools.packages.find]
+include = ["mcp_mesh*"]
