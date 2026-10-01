@@ -3,8 +3,8 @@
 > **The Dynamic Model Context Protocol Gateway & Lazy Tool Router**  
 > Aggregate 50+ upstream MCP servers, eliminate tool schema context bloat, and slash Turn-0 token consumption by 85–95% with zero external dependencies.
 
-[![Official Portal](https://img.shields.io/badge/Website-www.existentialcloud.ccwu.cc-8A2BE2?style=flat-square)](https://www.existentialcloud.ccwu.cc)
-[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=purple)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.1.0)
+[![Official Portal](https://img.shields.io/badge/Website-www.existentialcloud.ccwu.cc-f59e0b?style=flat-square)](https://www.existentialcloud.ccwu.cc)
+[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=orange)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.1.0)
 [![CI: Test Suite](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/mcp-mesh.svg?color=blue)](https://pypi.org/project/mcp-mesh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
