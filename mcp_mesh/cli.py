@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 from .core import ToolDefinition
 from .doctor import MCPDoctor
 from .indexer import ToolIndexer
+from .monitor import run_monitor
 from .proxy import MCPMeshGateway
 from .registry import DownstreamRegistry
 from .sse import run_sse_server
@@ -354,6 +355,11 @@ def cmd_sse(args: argparse.Namespace) -> None:
     run_sse_server(registry=registry, host=args.host, port=args.port, mode=args.mode)
 
 
+def cmd_monitor(args: argparse.Namespace) -> None:
+    """Runs the real-time terminal telemetry monitor."""
+    run_monitor(iterations=args.iterations, interval=args.interval, mock=args.demo)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="mcp-mesh",
@@ -390,6 +396,12 @@ def main() -> None:
     p_sse.add_argument("--port", "-p", type=int, default=8000, help="Port to listen on (default: 8000)")
     p_sse.add_argument("--mode", "-m", choices=["lazy", "passthrough"], default="lazy", help="Proxy mode (default: lazy)")
 
+    # Command: monitor
+    p_monitor = subparsers.add_parser("monitor", help="Start real-time ANSI terminal telemetry dashboard")
+    p_monitor.add_argument("--demo", "-d", action="store_true", default=True, help="Run live simulated multi-turn agent telemetry (default: True)")
+    p_monitor.add_argument("--iterations", "-n", type=int, default=None, help="Number of ticks before exiting (default: continuous)")
+    p_monitor.add_argument("--interval", "-i", type=float, default=0.8, help="Refresh interval in seconds (default: 0.8)")
+
     # Command: demo
     subparsers.add_parser("demo", help="Run interactive zero-config demonstration and benchmark")
 
@@ -407,6 +419,8 @@ def main() -> None:
         cmd_doctor(args)
     elif args.subcommand == "sse":
         cmd_sse(args)
+    elif args.subcommand == "monitor":
+        cmd_monitor(args)
     elif args.subcommand == "demo":
         cmd_demo(args)
     else:
