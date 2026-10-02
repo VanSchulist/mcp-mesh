@@ -140,6 +140,11 @@ Configure `mcp-mesh` as your single master MCP server in your `claude_desktop_co
 ```
 
 ### Gateway Configuration (`mcp_mesh_config.json`)
+> **Tip**: Instead of hand-writing this JSON configuration, use our companion package manager [`mcp-registry-cli`](https://github.com/VanSchulist/mcp-registry-cli) to auto-configure tools:
+> ```bash
+> uvx mcp-registry-cli add postgres github brave-search
+> ```
+
 List all your downstream MCP servers in standard JSON format:
 
 ```json
@@ -215,9 +220,9 @@ All 36+ tests execute synchronously using standard library `unittest` with zero 
 `mcp-mesh` serves as the **Flagship Project** of the [Existential Cloud AI Studio](https://github.com/VanSchulist/github-ai-studio).
 
 * [x] **Phase 1: Core Engine (v1.0.0 & v1.1.0)** - Zero-dependency stdio proxy, token indexer, dynamic LRU schema cache, `mcp-mesh doctor`, and SSE remote transport.
-* [x] **Phase 2: `mcp-mesh-eval` (Satellite 1)** - Frontier benchmark harness evaluating 60 tools across September 2026 models (Claude 5.5 Sonnet, GPT-6 Astra, Gemini 3.8 Flash, DeepSeek-V4.1-Flash).
-* [ ] **Phase 3: `mcp-mesh-ui` (Satellite 2)** - Terminal ANSI dashboard and web visualization charting live tool invocations and latency.
-* [ ] **Phase 4: `mcp-registry-cli` (Satellite 3)** - Community package manager to install curated MCP servers in one command.
+* [x] **Phase 2: `mcp-mesh-eval` (Satellite 1)** - Frontier benchmark harness evaluating 60 tools across September 2026 models ([Repo](https://github.com/VanSchulist/mcp-mesh-eval)).
+* [x] **Phase 3: `mcp-mesh monitor` (Satellite 2)** - Real-time terminal telemetry monitor (`mcp-mesh monitor`) streaming live tool invocations and latency.
+* [x] **Phase 4: `mcp-registry-cli` (Satellite 3)** - Zero-config community package manager discovering and auto-installing MCP servers directly into `mcp-mesh` ([Repo](https://github.com/VanSchulist/mcp-registry-cli)).
 
 ---
 
