@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Union
 
 from .core import (
     INTERNAL_ERROR,
@@ -21,6 +22,7 @@ from .core import (
 from .cache import LRUSchemaCache
 from .indexer import ToolIndexer
 from .registry import DownstreamRegistry
+from .telemetry import TelemetryLedger
 
 
 class MCPMeshGateway:
@@ -35,16 +37,29 @@ class MCPMeshGateway:
         registry: Optional[DownstreamRegistry] = None,
         mode: str = "lazy",
         server_name: str = "mcp-mesh",
-        server_version: str = "1.1.0",
+        server_version: str = "1.2.0",
         cache_capacity: int = 8,
+        db_path: Optional[str] = None,
     ) -> None:
         self.registry = registry or DownstreamRegistry()
         self.indexer: ToolIndexer = self.registry.indexer
         self.cache = LRUSchemaCache(capacity=cache_capacity)
+        self.ledger = TelemetryLedger(db_path=db_path)
         self.mode = mode  # "lazy" or "passthrough"
         self.server_name = server_name
         self.server_version = server_version
         self.protocol_version = "2024-11-05"
+        self.session_id = f"mesh-{int(time.time())}"
+        self.last_invoked_tool: Optional[str] = None
+
+        # Log session startup
+        metrics = self.indexer.get_metrics()
+        self.ledger.start_session(
+            session_id=self.session_id,
+            mode=self.mode,
+            server_count=metrics["total_servers"],
+            tool_count=metrics["total_tools"],
+        )
 
     def handle_message(self, line: str) -> Optional[str]:
         """Parses and executes a single incoming JSON-RPC line.
@@ -304,15 +319,41 @@ class MCPMeshGateway:
         if not server or not tool_name:
             return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'server' and 'tool_name' are required.")
 
-        # Keep invoked tool hot in LRU cache
+        start_t = time.perf_counter()
         tool_key = f"{server}::{tool_name}"
         cached_tool = self.cache.get(tool_key)
+        cache_hit = cached_tool is not None
         if not cached_tool:
             tool = self.indexer.get_tool(tool_key)
             if tool:
                 self.cache.put(tool)
 
         res = self.registry.call_tool(server, tool_name, tool_args)
+        latency_ms = (time.perf_counter() - start_t) * 1000.0
+
+        metrics = self.indexer.get_metrics()
+        success = "error" not in res
+        err_msg = res.get("error", {}).get("message") if not success else None
+
+        # Record call in persistent SQLite telemetry ledger
+        self.ledger.log_call(
+            server_id=server,
+            tool_name=tool_name,
+            latency_ms=latency_ms,
+            success=success,
+            cache_hit=cache_hit,
+            tokens_baseline=metrics["raw_tool_tokens"],
+            tokens_mesh=metrics["gateway_meta_tokens"],
+            tokens_saved=metrics["tokens_saved"],
+            session_id=self.session_id,
+            error_message=err_msg,
+        )
+
+        # Record co-occurrence if previous tool was called
+        if self.last_invoked_tool:
+            self.ledger.record_cooccurrence(self.last_invoked_tool, tool_key)
+        self.last_invoked_tool = tool_key
+
         if "error" in res:
             err = res["error"]
             return JSONRPCResponse.make_error(
@@ -327,6 +368,7 @@ class MCPMeshGateway:
     def _exec_mesh_status(self, req_id: Optional[Union[str, int]]) -> JSONRPCResponse:
         metrics = self.indexer.get_metrics()
         cache_stats = self.cache.get_stats()
+        telemetry_summary = self.ledger.get_summary()
         report = (
             f"=== mcp-mesh Gateway Status ===\n"
             f"- Connected Servers : {metrics['total_servers']} ({', '.join(metrics['server_ids']) or 'none'})\n"
@@ -336,6 +378,10 @@ class MCPMeshGateway:
             f"- Turn-0 Reduction  : {metrics['tokens_saved']} tokens ({metrics['savings_percentage']}% saved)\n"
             f"- LRU Hot Cache     : {cache_stats['cached_count']}/{cache_stats['capacity']} tools "
             f"(Hit Ratio: {cache_stats['hit_ratio_percent']}%)\n"
+            f"- Lifetime Calls    : {telemetry_summary['total_calls']} calls ({telemetry_summary['success_rate_percent']}% success)\n"
+            f"- Lifetime Saved    : {telemetry_summary['total_tokens_saved']:,} tokens (${telemetry_summary['estimated_dollars_saved']:.2f})\n"
+            f"- Avg Call Latency  : {telemetry_summary['avg_latency_ms']:.1f}ms\n"
+            f"- Telemetry Database: {telemetry_summary['db_path']}\n"
         )
         return JSONRPCResponse.make_result(
             req_id,

@@ -218,7 +218,7 @@ def load_demo_tools() -> List[ToolDefinition]:
 def print_banner() -> None:
     banner = (
         "=================================================================\n"
-        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.1.0)\n"
+        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.2.0)\n"
         "  Engineered by Van Schulist (@VanSchulist / Existential Cloud)\n"
         "================================================================="
     )
@@ -226,7 +226,44 @@ def print_banner() -> None:
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
-    """Displays token metrics and server aggregation status."""
+    """Displays token metrics, server aggregation status, or SQLite telemetry ledger."""
+    from .telemetry import TelemetryLedger
+    ledger = TelemetryLedger()
+
+    if getattr(args, "sql", None):
+        print_banner()
+        print(f"\n[+] Executing SQL Query on Telemetry Ledger ({ledger.db_path}):")
+        print(f"    {args.sql}\n")
+        try:
+            results = ledger.query(args.sql)
+            if not results:
+                print("    (0 rows returned)")
+            else:
+                headers = list(results[0].keys())
+                header_line = " | ".join(f"{h:<16}" for h in headers)
+                print(f"    {header_line}")
+                print(f"    {'-' * len(header_line)}")
+                for row in results:
+                    row_line = " | ".join(f"{str(row[h]):<16}" for h in headers)
+                    print(f"    {row_line}")
+            print()
+        except Exception as e:
+            print(f"[-] SQL Error: {e}\n")
+        return
+
+    if getattr(args, "db", False):
+        summary = ledger.get_summary()
+        print_banner()
+        print("\n[+] PERSISTENT TELEMETRY LEDGER (SQLite):")
+        print(f"  Database Path      : {summary['db_path']}")
+        print(f"  Total Invocations  : {summary['total_calls']}")
+        print(f"  Successful Calls   : {summary['successful_calls']} ({summary['success_rate_percent']}%)")
+        print(f"  Average Latency    : {summary['avg_latency_ms']} ms")
+        print(f"  LRU Cache Hits     : {summary['cache_hits']} ({summary['cache_hit_ratio_percent']}%)")
+        print(f"  Lifetime Saved     : {summary['total_tokens_saved']:,} tokens (~${summary['estimated_dollars_saved']:.2f})")
+        print("=================================================================\n")
+        return
+
     registry = DownstreamRegistry()
     if args.config and os.path.exists(args.config):
         registry.load_config_file(args.config)
@@ -375,6 +412,8 @@ def main() -> None:
     # Command: stats
     p_stats = subparsers.add_parser("stats", help="Display token savings metrics and server summary")
     p_stats.add_argument("--config", "-c", type=str, default="", help="Path to MCP configuration file")
+    p_stats.add_argument("--db", action="store_true", help="Display lifetime SQLite telemetry metrics and cost savings")
+    p_stats.add_argument("--sql", type=str, default="", help="Execute custom read-only SQL query against telemetry ledger")
 
     # Command: search
     p_search = subparsers.add_parser("search", help="Test natural language tool discovery in terminal")

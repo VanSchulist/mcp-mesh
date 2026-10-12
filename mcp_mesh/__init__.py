@@ -4,7 +4,7 @@ Author: Van Schulist (@VanSchulist / Existential Cloud)
 License: MIT
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Van Schulist"
 __brand__ = "Existential Cloud"
 
@@ -22,6 +22,7 @@ from .indexer import ToolIndexer
 from .registry import DownstreamRegistry
 from .proxy import MCPMeshGateway
 from .sse import run_sse_server
+from .telemetry import TelemetryLedger
 
 __all__ = [
     "__version__",
@@ -37,4 +38,5 @@ __all__ = [
     "DownstreamRegistry",
     "MCPMeshGateway",
     "run_sse_server",
+    "TelemetryLedger",
 ]

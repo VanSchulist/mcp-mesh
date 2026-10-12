@@ -61,5 +61,37 @@ class TestRegistry(unittest.TestCase):
                 os.remove(temp_path)
 
 
+    def test_process_handler_circuit_breaker_and_health(self):
+        from mcp_mesh.core import DownstreamServerConfig
+        from mcp_mesh.registry import DownstreamProcessHandler
+
+        # Configure a broken server command
+        cfg = DownstreamServerConfig(id="broken_server", command="nonexistent_binary_xyz_404")
+        handler = DownstreamProcessHandler(cfg)
+        handler.max_consecutive_failures = 2
+        handler.circuit_cooldown_seconds = 5.0
+
+        # Initial health check
+        health = handler.get_health()
+        self.assertFalse(health["running"])
+        self.assertFalse(health["circuit_breaker_open"])
+
+        # Trigger failures to trip circuit breaker
+        res1 = handler.send_request("ping")
+        self.assertIn("error", res1)
+        res2 = handler.send_request("ping")
+        self.assertIn("error", res2)
+
+        # Circuit breaker should now be open
+        health_tripped = handler.get_health()
+        self.assertTrue(health_tripped["circuit_breaker_open"])
+        self.assertGreater(health_tripped["cooldown_remaining_s"], 0.0)
+
+        # Immediate third call should be rejected by circuit breaker without spawning
+        res3 = handler.send_request("ping")
+        self.assertIn("error", res3)
+        self.assertIn("Circuit breaker open", res3["error"]["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

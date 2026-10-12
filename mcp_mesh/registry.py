@@ -6,9 +6,11 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import queue
 import subprocess
 import sys
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .core import (
@@ -25,13 +27,25 @@ from .indexer import ToolIndexer
 
 
 class DownstreamProcessHandler:
-    """Manages an individual downstream MCP server process running over stdio."""
+    """Manages an individual downstream MCP server process running over stdio.
+    
+    Features LiteLLM-style resilience:
+    - Threaded timeout watchdog to prevent hanging child processes
+    - Automatic crash recovery and process self-healing
+    - Circuit breaker to prevent process thrashing when a service is persistently broken
+    """
 
     def __init__(self, config: DownstreamServerConfig) -> None:
         self.config = config
         self.process: Optional[subprocess.Popen[str]] = None
         self._lock = threading.Lock()
         self._request_counter = 0
+        # Circuit breaker settings
+        self.consecutive_failures = 0
+        self.max_consecutive_failures = 3
+        self.circuit_open_until = 0.0
+        self.circuit_cooldown_seconds = 15.0
+        self.last_crash_time: Optional[float] = None
 
     def start(self) -> bool:
         """Spawns the downstream subprocess."""
@@ -57,18 +71,53 @@ class DownstreamProcessHandler:
                 )
                 return True
             except Exception as e:
-                # If command not found or failed to start
                 sys.stderr.write(f"[mcp-mesh] Failed to start server {self.config.id}: {e}\n")
                 return False
 
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
 
+    def _read_line_with_timeout(self, timeout: float) -> Optional[str]:
+        """Reads a line from stdout with a timeout watchdog to prevent gateway freezes."""
+        if not self.process or not self.process.stdout:
+            return None
+
+        result_queue: queue.Queue[Optional[str]] = queue.Queue(maxsize=1)
+
+        def _reader():
+            try:
+                if self.process and self.process.stdout:
+                    line = self.process.stdout.readline()
+                    result_queue.put(line)
+            except Exception:
+                result_queue.put(None)
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+
+        try:
+            return result_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None  # Timed out
+
     def send_request(self, method: str, params: Optional[Dict[str, Any]] = None, timeout: float = 10.0) -> Dict[str, Any]:
-        """Sends a JSON-RPC request to the downstream process and synchronously reads the response."""
+        """Sends a JSON-RPC request to the downstream process with watchdog and circuit breaker."""
+        now = time.time()
+        # 1. Circuit Breaker check
+        if now < self.circuit_open_until:
+            remaining = round(self.circuit_open_until - now, 1)
+            return {
+                "error": {
+                    "code": INTERNAL_ERROR,
+                    "message": f"Circuit breaker open for server '{self.config.id}'. Cooling down for {remaining}s.",
+                }
+            }
+
+        # 2. Self-Healing / Auto-Restart
         if not self.is_running():
             if not self.start():
-                return {"error": {"code": INTERNAL_ERROR, "message": f"Server {self.config.id} is offline."}}
+                self._record_failure()
+                return {"error": {"code": INTERNAL_ERROR, "message": f"Server '{self.config.id}' is offline and could not be started."}}
 
         with self._lock:
             self._request_counter += 1
@@ -77,18 +126,64 @@ class DownstreamProcessHandler:
             payload = json.dumps(req.to_dict()) + "\n"
 
             try:
-                assert self.process and self.process.stdin and self.process.stdout
+                assert self.process and self.process.stdin
                 self.process.stdin.write(payload)
                 self.process.stdin.flush()
-
-                # Read response line
-                line = self.process.stdout.readline()
-                if not line:
-                    return {"error": {"code": INTERNAL_ERROR, "message": "Downstream process closed connection."}}
-                
-                return json.loads(line.strip())
             except Exception as e:
-                return {"error": {"code": DOWNSTREAM_TIMEOUT, "message": f"Communication error: {str(e)}"}}
+                self.stop()
+                self._record_failure()
+                return {"error": {"code": INTERNAL_ERROR, "message": f"Write to server '{self.config.id}' failed: {e}. Process killed for restart."}}
+
+            # 3. Read with Watchdog Timeout
+            line = self._read_line_with_timeout(timeout=timeout)
+            if line is None:
+                # Timeout triggered or pipe broken
+                if self.is_running():
+                    # Process is still alive but hung: kill to protect gateway
+                    self.stop()
+                    self._record_failure()
+                    return {
+                        "error": {
+                            "code": DOWNSTREAM_TIMEOUT,
+                            "message": f"Downstream server '{self.config.id}' timed out after {timeout}s. Process terminated to prevent hanging.",
+                        }
+                    }
+                else:
+                    # Process died unexpectedly
+                    self.stop()
+                    self._record_failure()
+                    return {
+                        "error": {
+                            "code": INTERNAL_ERROR,
+                            "message": f"Downstream server '{self.config.id}' terminated unexpectedly. Auto-healing will respawn on next request.",
+                        }
+                    }
+
+            line = line.strip()
+            if not line:
+                self.stop()
+                self._record_failure()
+                return {"error": {"code": INTERNAL_ERROR, "message": "Downstream process returned empty response and closed connection."}}
+
+            try:
+                data = json.loads(line)
+                # Success: reset circuit breaker
+                self.consecutive_failures = 0
+                return data
+            except json.JSONDecodeError as e:
+                self._record_failure()
+                return {"error": {"code": INTERNAL_ERROR, "message": f"Invalid JSON response from server '{self.config.id}': {e}"}}
+
+    def _record_failure(self) -> None:
+        """Increments consecutive failures and trips circuit breaker if threshold reached."""
+        self.consecutive_failures += 1
+        self.last_crash_time = time.time()
+        if self.consecutive_failures >= self.max_consecutive_failures:
+            self.circuit_open_until = time.time() + self.circuit_cooldown_seconds
+            sys.stderr.write(
+                f"[mcp-mesh] Circuit breaker TRIPPED for '{self.config.id}' "
+                f"({self.consecutive_failures} failures). Cooling down for {self.circuit_cooldown_seconds}s.\n"
+            )
 
     def stop(self) -> None:
         """Terminates the child process."""
@@ -96,7 +191,7 @@ class DownstreamProcessHandler:
             if self.process is not None:
                 try:
                     self.process.terminate()
-                    self.process.wait(timeout=2.0)
+                    self.process.wait(timeout=1.0)
                 except Exception:
                     try:
                         self.process.kill()
@@ -104,6 +199,21 @@ class DownstreamProcessHandler:
                         pass
                 finally:
                     self.process = None
+
+    def get_health(self) -> Dict[str, Any]:
+        """Returns health diagnostics for this downstream server."""
+        running = self.is_running()
+        pid = self.process.pid if running and self.process else None
+        now = time.time()
+        circuit_open = now < self.circuit_open_until
+        return {
+            "server_id": self.config.id,
+            "running": running,
+            "pid": pid,
+            "consecutive_failures": self.consecutive_failures,
+            "circuit_breaker_open": circuit_open,
+            "cooldown_remaining_s": round(max(0.0, self.circuit_open_until - now), 1) if circuit_open else 0.0,
+        }
 
 
 class DownstreamRegistry:
