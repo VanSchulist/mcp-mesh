@@ -185,6 +185,10 @@ class TelemetryLedger:
         except Exception:
             pass
 
+    def log_tool_transition(self, from_tool: str, to_tool: str) -> None:
+        """Alias for record_cooccurrence tracking sequential tool transitions."""
+        self.record_cooccurrence(from_tool, to_tool)
+
     def get_related_tools(self, tool_name: str, limit: int = 3) -> List[Tuple[str, int]]:
         """Returns tools frequently co-called with the given tool."""
         try:

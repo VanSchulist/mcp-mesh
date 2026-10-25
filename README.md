@@ -166,8 +166,12 @@ mcp-mesh stats --db
 # 5. Environment & Upstream Health Check (flutter-doctor style diagnostics)
 mcp-mesh doctor
 
-# 6. Start HTTP/SSE gateway daemon for remote or containerized agents
-mcp-mesh sse --port 8000 --host 0.0.0.0
+# 6. Start HTTP/SSE gateway daemon for local or remote/containerized agents
+# Local loopback mode (default host 127.0.0.1):
+mcp-mesh sse --port 8000
+
+# Remote or containerized mode (binding to 0.0.0.0 strictly requires Bearer token authentication):
+mcp-mesh sse --host 0.0.0.0 --port 8000 --token "YOUR_SECRET_TOKEN"
 
 # 7. Real-time terminal telemetry monitor
 mcp-mesh monitor --mock
