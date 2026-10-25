@@ -22,6 +22,7 @@ if hasattr(sys.stderr, "reconfigure"):
         pass
 
 from .core import ToolDefinition
+from .completion import generate_completion_script
 from .demo_suite import get_enterprise_tools
 from .doctor import MCPDoctor
 from .indexer import ToolIndexer
@@ -284,6 +285,17 @@ def cmd_monitor(args: argparse.Namespace) -> None:
     run_monitor(iterations=args.iterations, interval=args.interval, mock=args.demo)
 
 
+def cmd_completion(args: argparse.Namespace) -> None:
+    """Generates shell completion scripts for Bash, Zsh, or PowerShell."""
+    shell = getattr(args, "shell", "bash")
+    try:
+        script = generate_completion_script(shell)
+        sys.stdout.write(script)
+    except ValueError as err:
+        sys.stderr.write(f"Error: {err}\n")
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="mcp-mesh",
@@ -340,6 +352,16 @@ def main() -> None:
     # Command: demo
     subparsers.add_parser("demo", help="Run interactive zero-config demonstration and benchmark")
 
+    # Command: completion
+    p_completion = subparsers.add_parser(
+        "completion", help="Generate shell auto-completion scripts for Bash, Zsh, or PowerShell"
+    )
+    p_completion.add_argument(
+        "shell",
+        choices=["bash", "zsh", "powershell", "pwsh"],
+        help="Target shell environment (bash, zsh, powershell, pwsh)",
+    )
+
     args = parser.parse_args()
 
     if getattr(args, "demo", False) or args.subcommand == "demo":
@@ -358,6 +380,8 @@ def main() -> None:
         cmd_sse(args)
     elif args.subcommand == "monitor":
         cmd_monitor(args)
+    elif args.subcommand == "completion":
+        cmd_completion(args)
     else:
         cmd_demo(args)
 

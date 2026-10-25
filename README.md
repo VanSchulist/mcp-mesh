@@ -203,6 +203,11 @@ mcp-mesh doctor
 
 # 7. Start HTTP/SSE streaming gateway daemon
 mcp-mesh sse --port 8000
+
+# 8. Generate shell auto-completion scripts (Bash, Zsh, PowerShell)
+mcp-mesh completion bash >> ~/.bashrc
+mcp-mesh completion zsh > ~/.zfunc/_mcp-mesh
+mcp-mesh completion powershell | Out-String | Invoke-Expression
 ```
 
 ---
@@ -215,7 +220,7 @@ The test suite validates JSON-RPC 2.0 protocol adherence, concurrency, schema mi
 python -m unittest discover -s tests -v
 ```
 
-All 76 unit and integration tests execute in under 6 seconds on standard hardware using Python's built-in `unittest` harness.
+All 82 unit and integration tests execute in under 7 seconds on standard hardware using Python's built-in `unittest` harness.
 
 ---
 
