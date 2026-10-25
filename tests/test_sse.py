@@ -131,9 +131,15 @@ class TestSSETransportServer(unittest.TestCase):
             data=b"{}",
             headers={"Content-Length": str(15 * 1024 * 1024), "Content-Type": "application/json"},
         )
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
+        try:
             urllib.request.urlopen(req, timeout=2.0)
-        self.assertEqual(ctx.exception.code, 413)
+            self.fail("Expected HTTP 413 or connection abort for oversized payload")
+        except urllib.error.HTTPError as ctx:
+            self.assertEqual(ctx.code, 413)
+        except (ConnectionAbortedError, ConnectionResetError):
+            # On Windows TCP stacks, immediate server close on oversized Content-Length
+            # may trigger WinError 10053/10054 before response headers are fully consumed.
+            pass
 
 
 class TestSSESecurity(unittest.TestCase):
