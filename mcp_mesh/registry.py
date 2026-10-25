@@ -100,6 +100,22 @@ class DownstreamProcessHandler:
         except queue.Empty:
             return None  # Timed out
 
+    def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None) -> bool:
+        """Sends a JSON-RPC notification (no ID) to downstream process without waiting for response."""
+        if not self.is_running():
+            if not self.start():
+                return False
+        with self._lock:
+            req = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+            payload = json.dumps(req) + "\n"
+            try:
+                assert self.process and self.process.stdin
+                self.process.stdin.write(payload)
+                self.process.stdin.flush()
+                return True
+            except Exception:
+                return False
+
     def send_request(self, method: str, params: Optional[Dict[str, Any]] = None, timeout: float = 10.0) -> Dict[str, Any]:
         """Sends a JSON-RPC request to the downstream process with watchdog and circuit breaker."""
         now = time.time()
@@ -312,7 +328,7 @@ class DownstreamRegistry:
             sys.stderr.write(f"[mcp-mesh] Init error for {server_id}: {init_res['error']}\n")
             return []
 
-        handler.send_request("notifications/initialized", {})
+        handler.send_notification("notifications/initialized", {})
 
         # Request tools list
         res = handler.send_request("tools/list", {})

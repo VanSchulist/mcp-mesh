@@ -4,7 +4,7 @@ Author: Van Schulist (@VanSchulist / Existential Cloud)
 License: MIT
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "Van Schulist"
 __brand__ = "Existential Cloud"
 
@@ -18,6 +18,7 @@ from .core import (
 )
 from .cache import LRUSchemaCache
 from .doctor import MCPDoctor
+from .federation import FederationManager, discover_system_mcp_configs
 from .indexer import ToolIndexer
 from .registry import DownstreamRegistry
 from .proxy import MCPMeshGateway
@@ -34,6 +35,8 @@ __all__ = [
     "compact_tool_signature",
     "LRUSchemaCache",
     "MCPDoctor",
+    "FederationManager",
+    "discover_system_mcp_configs",
     "ToolIndexer",
     "DownstreamRegistry",
     "MCPMeshGateway",

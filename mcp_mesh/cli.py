@@ -218,7 +218,7 @@ def load_demo_tools() -> List[ToolDefinition]:
 def print_banner() -> None:
     banner = (
         "=================================================================\n"
-        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.2.0)\n"
+        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.3.0)\n"
         "  Engineered by Van Schulist (@VanSchulist / Existential Cloud)\n"
         "================================================================="
     )
@@ -265,7 +265,12 @@ def cmd_stats(args: argparse.Namespace) -> None:
         return
 
     registry = DownstreamRegistry()
-    if args.config and os.path.exists(args.config):
+    if getattr(args, "federate", False):
+        from .federation import FederationManager
+        fed = FederationManager(registry=registry)
+        fed.load_federated_servers(auto_discover=True)
+        fed.discover_all_tools(parallel=True)
+    elif args.config and os.path.exists(args.config):
         registry.load_config_file(args.config)
     else:
         # Load demo suite if no custom config provided
@@ -289,8 +294,16 @@ def cmd_stats(args: argparse.Namespace) -> None:
 def cmd_search(args: argparse.Namespace) -> None:
     """Executes a search query against indexed tools."""
     indexer = ToolIndexer()
-    for tool in load_demo_tools():
-        indexer.register_tool(tool)
+    if getattr(args, "federate", False):
+        from .registry import DownstreamRegistry
+        from .federation import FederationManager
+        reg = DownstreamRegistry(indexer=indexer)
+        fed = FederationManager(registry=reg)
+        fed.load_federated_servers(auto_discover=True)
+        fed.discover_all_tools(parallel=True)
+    else:
+        for tool in load_demo_tools():
+            indexer.register_tool(tool)
 
     results = indexer.search(args.query, limit=args.limit)
     print_banner()
@@ -353,16 +366,28 @@ def cmd_demo(args: argparse.Namespace) -> None:
 def cmd_run(args: argparse.Namespace) -> None:
     """Runs the MCP gateway stdio server for client connections."""
     registry = DownstreamRegistry()
-    if args.config and os.path.exists(args.config):
-        count = registry.load_config_file(args.config)
-        sys.stderr.write(f"[mcp-mesh] Loaded {count} server configurations from {args.config}\n")
-    else:
-        # Load demo tools for zero-config out-of-the-box operation
+
+    custom_cfg = [args.config] if (args.config and os.path.exists(args.config)) else None
+
+    gateway = MCPMeshGateway(
+        registry=registry,
+        mode=args.mode,
+        federate=getattr(args, "federate", False),
+        custom_configs=custom_cfg,
+        parallel_discovery=not getattr(args, "serial_discovery", False),
+    )
+
+    # If no upstream tools were federated or loaded, seed with demo tools
+    if gateway.indexer.get_metrics()["total_tools"] == 0:
         for tool in load_demo_tools():
             registry.indexer.register_tool(tool)
-        sys.stderr.write("[mcp-mesh] No config provided. Loaded default demonstration tools.\n")
+        sys.stderr.write("[mcp-mesh] No upstream servers configured. Loaded built-in demonstration tools.\n")
+    else:
+        sys.stderr.write(
+            f"[mcp-mesh] Unified Index active: {gateway.indexer.get_metrics()['total_tools']} tools "
+            f"from {gateway.indexer.get_metrics()['total_servers']} server(s).\n"
+        )
 
-    gateway = MCPMeshGateway(registry=registry, mode=args.mode)
     gateway.run_stdio()
 
 
@@ -408,10 +433,13 @@ def main() -> None:
     p_run = subparsers.add_parser("run", help="Start MCP stdio proxy gateway for Claude/Cursor/Antigravity")
     p_run.add_argument("--config", "-c", type=str, default="mcp_mesh.json", help="Path to MCP configuration file")
     p_run.add_argument("--mode", "-m", choices=["lazy", "passthrough"], default="lazy", help="Proxy mode (default: lazy)")
+    p_run.add_argument("--federate", "-f", action="store_true", help="Auto-discover and federate all system MCP servers from Antigravity, Claude, and Cursor")
+    p_run.add_argument("--serial-discovery", action="store_true", help="Run upstream tool discovery sequentially instead of in parallel")
 
     # Command: stats
     p_stats = subparsers.add_parser("stats", help="Display token savings metrics and server summary")
     p_stats.add_argument("--config", "-c", type=str, default="", help="Path to MCP configuration file")
+    p_stats.add_argument("--federate", "-f", action="store_true", help="Include federated system MCP servers in token economy report")
     p_stats.add_argument("--db", action="store_true", help="Display lifetime SQLite telemetry metrics and cost savings")
     p_stats.add_argument("--sql", type=str, default="", help="Execute custom read-only SQL query against telemetry ledger")
 
@@ -419,6 +447,7 @@ def main() -> None:
     p_search = subparsers.add_parser("search", help="Test natural language tool discovery in terminal")
     p_search.add_argument("query", type=str, help="Search query or functional goal")
     p_search.add_argument("--limit", "-l", type=int, default=3, help="Max candidates to return")
+    p_search.add_argument("--federate", "-f", action="store_true", help="Search across live federated system MCP tools")
 
     # Command: inspect
     p_inspect = subparsers.add_parser("inspect", help="Inspect full JSON schema for an indexed tool")

@@ -20,6 +20,7 @@ from .core import (
     JSONRPCResponse,
 )
 from .cache import LRUSchemaCache
+from .federation import FederationManager
 from .indexer import ToolIndexer
 from .registry import DownstreamRegistry
 from .telemetry import TelemetryLedger
@@ -37,20 +38,29 @@ class MCPMeshGateway:
         registry: Optional[DownstreamRegistry] = None,
         mode: str = "lazy",
         server_name: str = "mcp-mesh",
-        server_version: str = "1.2.0",
+        server_version: str = "1.3.0",
         cache_capacity: int = 8,
         db_path: Optional[str] = None,
+        federate: bool = False,
+        custom_configs: Optional[List[str]] = None,
+        parallel_discovery: bool = True,
     ) -> None:
         self.registry = registry or DownstreamRegistry()
         self.indexer: ToolIndexer = self.registry.indexer
         self.cache = LRUSchemaCache(capacity=cache_capacity)
         self.ledger = TelemetryLedger(db_path=db_path)
+        self.federation = FederationManager(registry=self.registry)
         self.mode = mode  # "lazy" or "passthrough"
         self.server_name = server_name
         self.server_version = server_version
         self.protocol_version = "2024-11-05"
         self.session_id = f"mesh-{int(time.time())}"
         self.last_invoked_tool: Optional[str] = None
+
+        # Execute upstream server federation if enabled
+        if federate or custom_configs:
+            self.federation.load_federated_servers(auto_discover=federate, custom_configs=custom_configs)
+            self.federation.discover_all_tools(parallel=parallel_discovery)
 
         # Log session startup
         metrics = self.indexer.get_metrics()
@@ -200,7 +210,7 @@ class MCPMeshGateway:
                     "properties": {
                         "server": {
                             "type": "string",
-                            "description": "The downstream server ID (e.g. 'github', 'postgres').",
+                            "description": "The downstream server ID (e.g. 'github', 'postgres'). Optional if tool_name is namespaced as 'server::tool'.",
                         },
                         "tool_name": {
                             "type": "string",
@@ -212,7 +222,7 @@ class MCPMeshGateway:
                             "default": {},
                         },
                     },
-                    "required": ["server", "tool_name"],
+                    "required": ["tool_name"],
                 },
             },
             {
@@ -273,6 +283,12 @@ class MCPMeshGateway:
         if not matches:
             text_out = f"No matching tools found for query: '{query}'. Use 'mesh_status' to check registered servers."
         else:
+            # Predictive pre-warm: background spawn for top match servers
+            try:
+                self.federation.predictive_prewarm_candidates(matches)
+            except Exception:
+                pass
+
             lines = [f"Found {len(matches)} matching tool(s):"]
             for tool, score in matches:
                 self.cache.put(tool)  # Warm up LRU hot-tier cache
@@ -290,8 +306,20 @@ class MCPMeshGateway:
         server = args.get("server", "")
         tool_name = args.get("tool_name", "")
 
-        if not server or not tool_name:
-            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'server' and 'tool_name' are required.")
+        if not tool_name:
+            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'tool_name' is required.")
+
+        # Auto-resolve server if missing
+        if not server:
+            if "::" in tool_name:
+                server, tool_name = tool_name.split("::", 1)
+            else:
+                tool_match = self.indexer.get_tool(tool_name)
+                if tool_match:
+                    server = tool_match.server_id
+
+        if not server:
+            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, f"Could not resolve server for tool '{tool_name}'.")
 
         tool_key = f"{server}::{tool_name}"
         # 1. Check LRU Hot-Tier Cache first
@@ -316,8 +344,20 @@ class MCPMeshGateway:
         tool_name = args.get("tool_name", "")
         tool_args = args.get("arguments", {})
 
-        if not server or not tool_name:
-            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'server' and 'tool_name' are required.")
+        if not tool_name:
+            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, "'tool_name' is required.")
+
+        # Auto-resolve server if missing or formatted as 'server::tool'
+        if not server:
+            if "::" in tool_name:
+                server, tool_name = tool_name.split("::", 1)
+            else:
+                tool_match = self.indexer.get_tool(tool_name)
+                if tool_match:
+                    server = tool_match.server_id
+
+        if not server:
+            return JSONRPCResponse.make_error(req_id, INVALID_PARAMS, f"Could not determine downstream server for tool '{tool_name}'.")
 
         start_t = time.perf_counter()
         tool_key = f"{server}::{tool_name}"
@@ -349,18 +389,17 @@ class MCPMeshGateway:
             error_message=err_msg,
         )
 
-        # Record co-occurrence if previous tool was called
-        if self.last_invoked_tool:
-            self.ledger.record_cooccurrence(self.last_invoked_tool, tool_key)
+        # Record tool co-occurrence in telemetry ledger
+        if self.last_invoked_tool and self.last_invoked_tool != tool_key:
+            self.ledger.log_tool_transition(self.last_invoked_tool, tool_key)
         self.last_invoked_tool = tool_key
 
-        if "error" in res:
+        if not success:
             err = res["error"]
             return JSONRPCResponse.make_error(
                 req_id,
                 err.get("code", INTERNAL_ERROR),
-                err.get("message", "Execution error"),
-                err.get("data"),
+                err.get("message", "Tool execution failed on downstream server"),
             )
 
         return JSONRPCResponse.make_result(req_id, res.get("result", {}))
@@ -369,9 +408,11 @@ class MCPMeshGateway:
         metrics = self.indexer.get_metrics()
         cache_stats = self.cache.get_stats()
         telemetry_summary = self.ledger.get_summary()
+        sources_desc = f"{len(self.federation.federated_sources)} sources" if self.federation.federated_sources else "local"
         report = (
-            f"=== mcp-mesh Gateway Status ===\n"
+            f"=== mcp-mesh Federated Gateway v{self.server_version} ===\n"
             f"- Connected Servers : {metrics['total_servers']} ({', '.join(metrics['server_ids']) or 'none'})\n"
+            f"- Federated Sources : {sources_desc}\n"
             f"- Indexed Tools     : {metrics['total_tools']}\n"
             f"- Raw Tools Tokens  : {metrics['raw_tool_tokens']} tokens\n"
             f"- Gateway Overhead  : {metrics['gateway_meta_tokens']} tokens\n"
