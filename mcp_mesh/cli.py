@@ -414,7 +414,22 @@ def cmd_sse(args: argparse.Namespace) -> None:
             registry.indexer.register_tool(tool)
         sys.stderr.write("[mcp-mesh] No config provided. Loaded default demonstration tools.\n")
 
-    run_sse_server(registry=registry, host=args.host, port=args.port, mode=args.mode)
+    auth_token = args.token or os.environ.get("MCP_MESH_AUTH_TOKEN") or None
+    allowed_origins = [o.strip() for o in args.cors_origin.split(",") if o.strip()] if args.cors_origin else None
+
+    try:
+        run_sse_server(
+            registry=registry,
+            host=args.host,
+            port=args.port,
+            mode=args.mode,
+            auth_token=auth_token,
+            allowed_origins=allowed_origins,
+            insecure_no_auth=args.insecure_no_auth,
+        )
+    except ValueError as e:
+        sys.stderr.write(f"\n[mcp-mesh] {e}\n")
+        sys.exit(1)
 
 
 def cmd_monitor(args: argparse.Namespace) -> None:
@@ -463,6 +478,9 @@ def main() -> None:
     p_sse.add_argument("--host", "-H", type=str, default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
     p_sse.add_argument("--port", "-p", type=int, default=8000, help="Port to listen on (default: 8000)")
     p_sse.add_argument("--mode", "-m", choices=["lazy", "passthrough"], default="lazy", help="Proxy mode (default: lazy)")
+    p_sse.add_argument("--token", "-t", type=str, default="", help="Bearer token for HTTP/SSE authentication (required for non-loopback host or set MCP_MESH_AUTH_TOKEN)")
+    p_sse.add_argument("--cors-origin", type=str, default="", help="Comma-separated list of allowed CORS origins (default: local loopback origins)")
+    p_sse.add_argument("--insecure-no-auth", action="store_true", help="Explicitly allow binding to non-loopback interface without authentication (INSECURE)")
 
     # Command: monitor
     p_monitor = subparsers.add_parser("monitor", help="Start real-time ANSI terminal telemetry dashboard")

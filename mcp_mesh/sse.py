@@ -2,10 +2,13 @@
 
 Enables remote, containerized, and shared multi-agent access to the gateway
 using standard HTTP and SSE protocols (Zero external dependencies).
+Includes Bearer token authentication and CORS origin controls.
 """
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import json
 import sys
 import threading
@@ -13,10 +16,22 @@ import time
 import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .core import JSONRPCRequest, JSONRPCResponse
 from .proxy import MCPMeshGateway
+
+
+def is_loopback_host(host: str) -> bool:
+    """Returns True if the host is a local loopback address (e.g. 127.0.0.1, localhost, ::1)."""
+    h = host.strip().lower()
+    if h in ("127.0.0.1", "localhost", "::1", "ip6-localhost", "ip6-loopback"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+        return ip.is_loopback
+    except ValueError:
+        return False
 
 
 class SSEClientConnection:
@@ -67,16 +82,136 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
     gateway: MCPMeshGateway
     sessions: Dict[str, SSEClientConnection] = {}
     sessions_lock = threading.Lock()
+    auth_token: Optional[str] = None
+    allowed_origins: Optional[List[str]] = None
+    MAX_REQUEST_BODY_BYTES: int = 10 * 1024 * 1024  # 10 MB payload limit
+
+    def _verify_host_header(self) -> bool:
+        """Protects against DNS rebinding attacks by validating the Host header."""
+        host_header = self.headers.get("Host", "").strip()
+        if not host_header:
+            self.send_error(400, "Missing required Host header.")
+            return False
+
+        # Extract hostname, handling IPv6 literals like [::1]:8000
+        if host_header.startswith("["):
+            hostname = host_header.split("]")[0].lstrip("[")
+        else:
+            hostname = host_header.split(":")[0]
+
+        # Valid loopback hostnames are always permitted
+        if is_loopback_host(hostname):
+            return True
+
+        # If server is bound to a specific non-loopback host
+        server_host = getattr(self.server, "server_address", (None,))[0]
+        if server_host and hostname == server_host:
+            return True
+
+        # If Bearer token authentication is enabled, remote access is protected
+        if self.auth_token is not None:
+            return True
+
+        # Otherwise reject untrusted external Host header to prevent DNS rebinding
+        self.send_error(403, "Invalid Host header: DNS rebinding rejected.")
+        return False
+
+    def _get_cors_origin_header(self) -> Optional[str]:
+        """Determines the appropriate Access-Control-Allow-Origin value for the request."""
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return None
+
+        # User-configured allowed origins list
+        if self.allowed_origins is not None:
+            if "*" in self.allowed_origins:
+                return "*"
+            if origin in self.allowed_origins:
+                return origin
+            return None
+
+        # Default: allow local loopback origins (localhost, 127.0.0.1, [::1] on any port)
+        parsed_origin = urllib.parse.urlparse(origin)
+        hostname = (parsed_origin.hostname or "").lower()
+        if hostname in ("127.0.0.1", "localhost", "::1"):
+            return origin
+        try:
+            if hostname and ipaddress.ip_address(hostname).is_loopback:
+                return origin
+        except ValueError:
+            pass
+
+        return None
+
+    def _set_cors_headers(self, matched_origin: Optional[str] = None) -> None:
+        """Applies CORS headers if the Origin header is authorized."""
+        origin = matched_origin or self._get_cors_origin_header()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Vary", "Origin")
+
+    def _verify_auth(self) -> bool:
+        """Validates Bearer token authentication if auth_token is configured."""
+        if self.auth_token is None:
+            return True
+
+        # Check Authorization: Bearer <token>
+        auth_header = self.headers.get("Authorization", "")
+        token_candidate = None
+        if auth_header.startswith("Bearer "):
+            token_candidate = auth_header[7:].strip()
+
+        # Check query parameter ?token=<token>
+        if not token_candidate:
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            tokens = qs.get("token", [])
+            if tokens:
+                token_candidate = tokens[0]
+
+        # Timing-attack safe comparison
+        if token_candidate and hmac.compare_digest(token_candidate, self.auth_token):
+            return True
+
+        # Return 401 Unauthorized without leaking any token
+        payload = json.dumps({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32000,
+                "message": "Unauthorized: Invalid or missing authentication token.",
+            },
+        }).encode("utf-8")
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("WWW-Authenticate", 'Bearer realm="mcp-mesh"')
+        self._set_cors_headers()
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+        return False
 
     def do_OPTIONS(self) -> None:
         """Handle CORS pre-flight requests."""
+        if not self._verify_host_header():
+            return
+
+        matched = self._get_cors_origin_header()
+        req_origin = self.headers.get("Origin")
+        if req_origin and not matched:
+            self.send_error(403, "CORS origin not allowed.")
+            return
+
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        if matched:
+            self._set_cors_headers(matched)
         self.end_headers()
 
     def do_GET(self) -> None:
+        if not self._verify_host_header():
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -84,23 +219,31 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
             self._send_json_response(200, {
                 "status": "healthy",
                 "service": "mcp-mesh",
-                "version": "1.1.0",
+                "version": "1.3.0",
                 "transport": "sse",
                 "tools_indexed": len(self.gateway.indexer.tools),
+                "auth_required": self.auth_token is not None,
             })
             return
 
         if path == "/sse":
+            if not self._verify_auth():
+                return
             self._handle_sse_connect()
             return
 
         self.send_error(404, "Endpoint not found.")
 
     def do_POST(self) -> None:
+        if not self._verify_host_header():
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
         if path == "/message":
+            if not self._verify_auth():
+                return
             self._handle_message_post(parsed)
             return
 
@@ -113,7 +256,7 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._set_cors_headers()
         self.end_headers()
 
         client_conn = SSEClientConnection(session_id, self)
@@ -144,6 +287,10 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
             self.send_error(400, "Empty request body.")
             return
 
+        if content_length > self.MAX_REQUEST_BODY_BYTES:
+            self.send_error(413, "Payload Too Large: JSON-RPC body exceeds 10MB limit.")
+            return
+
         body_raw = self.rfile.read(content_length).decode("utf-8")
         try:
             req_data = json.loads(body_raw)
@@ -156,7 +303,9 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
 
         # Check if query parameter specifies active session to stream response over SSE
         qs = urllib.parse.parse_qs(parsed.query)
-        session_id = qs.get("sessionId", [""])[0]
+        raw_session_id = qs.get("sessionId", [""])[0]
+        # Sanitize session_id to alphanumeric characters
+        session_id = raw_session_id if raw_session_id.isalnum() else ""
 
         if res is not None:
             res_dict = res.to_dict()
@@ -169,14 +318,14 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
             self._send_json_response(200, res_dict)
         else:
             self.send_response(202)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._set_cors_headers()
             self.end_headers()
 
     def _send_json_response(self, code: int, data: Dict[str, Any]) -> None:
         payload = json.dumps(data).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._set_cors_headers()
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -186,17 +335,27 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
         pass
 
 
-def make_sse_handler(registry_or_gateway: Any, mode: str = "lazy") -> type[MCPMeshSSEHandler]:
+def make_sse_handler(
+    registry_or_gateway: Any,
+    mode: str = "lazy",
+    auth_token: Optional[str] = None,
+    allowed_origins: Optional[List[str]] = None,
+) -> type[MCPMeshSSEHandler]:
     """Factory creating an MCPMeshSSEHandler bound to a specific gateway or registry."""
     if isinstance(registry_or_gateway, MCPMeshGateway):
         gw = registry_or_gateway
     else:
         gw = MCPMeshGateway(registry=registry_or_gateway, mode=mode)
 
+    _auth = auth_token
+    _origins = allowed_origins
+
     class BoundSSEHandler(MCPMeshSSEHandler):
         gateway = gw
         sessions: Dict[str, SSEClientConnection] = {}
         sessions_lock = threading.Lock()
+        auth_token = _auth
+        allowed_origins = _origins
 
     return BoundSSEHandler
 
@@ -207,16 +366,39 @@ def run_sse_server(
     host: str = "127.0.0.1",
     port: int = 8000,
     mode: str = "lazy",
+    auth_token: Optional[str] = None,
+    allowed_origins: Optional[List[str]] = None,
+    insecure_no_auth: bool = False,
 ) -> None:
-    """Starts the MCP SSE gateway HTTP server."""
+    """Starts the MCP SSE gateway HTTP server.
+
+    Security:
+        - If host is non-loopback (e.g. 0.0.0.0), auth_token is mandatory unless
+          insecure_no_auth is explicitly set to True.
+        - Origins are restricted to local loopback interfaces by default.
+    """
+    if not is_loopback_host(host) and not auth_token and not insecure_no_auth:
+        raise ValueError(
+            f"Security Error: Refusing to bind mcp-mesh to non-loopback interface '{host}' "
+            f"without authentication. Provide an auth token via --token / MCP_MESH_AUTH_TOKEN "
+            f"or pass --insecure-no-auth if this is an isolated network."
+        )
+
     if gateway is None:
         from .registry import DownstreamRegistry
         reg = registry or DownstreamRegistry()
         gateway = MCPMeshGateway(registry=reg, mode=mode)
 
-    handler_cls = make_sse_handler(gateway, mode=mode)
+    handler_cls = make_sse_handler(
+        gateway,
+        mode=mode,
+        auth_token=auth_token,
+        allowed_origins=allowed_origins,
+    )
     server = HTTPServer((host, port), handler_cls)
+    auth_status = "ENABLED (Bearer token required)" if auth_token else "DISABLED (local loopback mode)"
     sys.stderr.write(f"[mcp-mesh] SSE & HTTP Gateway running on http://{host}:{port}\n")
+    sys.stderr.write(f"[mcp-mesh] Authentication: {auth_status}\n")
     sys.stderr.write(f"[mcp-mesh] SSE Endpoint: http://{host}:{port}/sse\n")
     sys.stderr.flush()
 
