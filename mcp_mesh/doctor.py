@@ -40,8 +40,40 @@ class MCPDoctor:
         self.results.clear()
         self._check_python_runtime()
         self._check_host_binaries()
+        self._check_federated_environments()
         self._check_config_and_servers()
         return self.results
+
+    def _check_federated_environments(self) -> None:
+        """Inspects host environment for client MCP configs (Antigravity, Claude, Cursor)."""
+        from .federation import discover_system_mcp_configs
+        detected = discover_system_mcp_configs()
+        if not detected:
+            self.results.append(HealthCheckItem(
+                category="Federated Clients",
+                name="Client Configs",
+                status="WARN",
+                message="No installed client MCP configurations detected",
+            ))
+            return
+
+        for client_name, path in detected.items():
+            server_names = []
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    srvs = data.get("mcpServers", {}) or data.get("servers", {})
+                    server_names = list(srvs.keys())
+            except Exception:
+                pass
+
+            srv_desc = f" ({len(server_names)} upstream server(s): {', '.join(server_names)})" if server_names else ""
+            self.results.append(HealthCheckItem(
+                category="Federated Clients",
+                name=client_name,
+                status="OK",
+                message=f"Found config at {path}{srv_desc}",
+            ))
 
     def run_all(self) -> List[HealthCheckItem]:
         """Alias for run_all_checks."""
