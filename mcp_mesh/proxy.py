@@ -38,7 +38,7 @@ class MCPMeshGateway:
         registry: Optional[DownstreamRegistry] = None,
         mode: str = "lazy",
         server_name: str = "mcp-mesh",
-        server_version: str = "1.3.0",
+        server_version: str = "1.4.0",
         cache_capacity: int = 8,
         db_path: Optional[str] = None,
         federate: bool = False,
@@ -195,6 +195,11 @@ class MCPMeshGateway:
                             "type": "string",
                             "description": "The target tool name to inspect.",
                         },
+                        "minify": {
+                            "type": "boolean",
+                            "description": "Whether to return token-minified schema (prunes non-semantic keys & redundant descriptions). Default: true.",
+                            "default": True,
+                        },
                     },
                     "required": ["server", "tool_name"],
                 },
@@ -333,7 +338,16 @@ class MCPMeshGateway:
         if not tool:
             return JSONRPCResponse.make_error(req_id, TOOL_NOT_FOUND, f"Tool '{tool_name}' on server '{server}' not found.")
 
-        schema_text = json.dumps(tool.to_mcp_dict(), indent=2)
+        minify_flag = args.get("minify", True)
+        if isinstance(minify_flag, str):
+            minify_flag = minify_flag.lower() not in ("false", "0", "no")
+
+        if minify_flag:
+            schema_dict = tool.to_minified_dict()
+        else:
+            schema_dict = tool.to_mcp_dict()
+
+        schema_text = json.dumps(schema_dict, indent=2)
         return JSONRPCResponse.make_result(
             req_id,
             {"content": [{"type": "text", "text": schema_text}]},

@@ -4,7 +4,7 @@
 > Aggregates heterogeneous upstream MCP servers, indexes schemas into an inverted keyword search tree, and resolves parameter definitions on demand. Slashes Turn-0 context prompt bloat by 85–95% across 50+ tools with zero external dependencies.
 
 [![Official Portal](https://img.shields.io/badge/Portal-www.existentialcloud.ccwu.cc-f59e0b?style=flat-square)](https://www.existentialcloud.ccwu.cc)
-[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=orange)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.3.0)
+[![Release](https://img.shields.io/github/v/release/VanSchulist/mcp-mesh?color=orange)](https://github.com/VanSchulist/mcp-mesh/releases/tag/v1.4.0)
 [![CI: Test Suite](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/VanSchulist/mcp-mesh/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/mcp-mesh.svg?color=blue)](https://pypi.org/project/mcp-mesh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -108,7 +108,7 @@ Engineering integrity requires stating where an architectural pattern is inappro
                                      │ 4 Active Meta-Tools (~527 tokens)
                                      ▼
  ┌────────────────────────────────────────────────────────────────────────┐
- │                   mcp-mesh v1.3 Federation Gateway                     │
+ │                   mcp-mesh v1.4 Federation Gateway                     │
  │  ┌──────────────────────────────────────────────────────────────────┐  │
  │  │        Federation Manager (Auto-discovery, Loop Prevention)       │  │
  │  ├──────────────────────────────────────────────────────────────────┤  │
@@ -130,6 +130,7 @@ Engineering integrity requires stating where an architectural pattern is inappro
 
 ## ⚙️ Core Technical Features
 
+* **AST-Based Schema Minification (`mcp_mesh.minifier`)**: Analyzes and compresses JSON-Schema ASTs on the fly during `mesh_describe_tool`. Strips non-semantic metadata (`$schema`, `title`, redundant comments), prunes long natural language descriptions to concise parameter contracts, and hoists duplicate sub-schemas while strictly preserving validation constraints (`type`, `enum`, `required`, `minimum/maximum`). Slashes Turn-1 schema prompt consumption by 35–55%.
 * **Zero External Dependencies**: Pure Python 3.10+ standard library (`concurrent.futures`, `json`, `sqlite3`, `http.server`, `subprocess`, `argparse`, `dataclasses`). Runs instantly on any environment without `pip install` or native C-extension compilation.
 * **Universal Heterogeneous Federation (`--federate`)**: Discovers and federates MCP configurations across Google Antigravity (`~/.gemini/config/mcp_config.json`), Claude Desktop (`claude_desktop_config.json`), and Cursor (`~/.cursor/mcp.json`) into a single unified endpoint with automatic circular-proxy prevention.
 * **Predictive Background Pre-Warming**: Spawns and handshakes upstream child processes concurrently in background threads the moment an agent searches for them (`mesh_search_tools`), hiding process boot latency.
@@ -204,7 +205,11 @@ mcp-mesh doctor
 # 7. Start HTTP/SSE streaming gateway daemon
 mcp-mesh sse --port 8000
 
-# 8. Generate shell auto-completion scripts (Bash, Zsh, PowerShell)
+# 8. Inspect tool schema (AST-minified by default, with --stats or --raw)
+mcp-mesh inspect github::create_issue --stats
+mcp-mesh inspect github::create_issue --raw
+
+# 9. Generate shell auto-completion scripts (Bash, Zsh, PowerShell)
 mcp-mesh completion bash >> ~/.bashrc
 mcp-mesh completion zsh > ~/.zfunc/_mcp-mesh
 mcp-mesh completion powershell | Out-String | Invoke-Expression
@@ -220,7 +225,7 @@ The test suite validates JSON-RPC 2.0 protocol adherence, concurrency, schema mi
 python -m unittest discover -s tests -v
 ```
 
-All 82 unit and integration tests execute in under 7 seconds on standard hardware using Python's built-in `unittest` harness.
+All 90 unit and integration tests execute in under 6 seconds on standard hardware using Python's built-in `unittest` harness.
 
 ---
 

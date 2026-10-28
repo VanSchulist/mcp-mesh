@@ -43,7 +43,7 @@ def load_demo_tools() -> List[ToolDefinition]:
 def print_banner() -> None:
     banner = (
         "=================================================================\n"
-        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.3.0)\n"
+        "  mcp-mesh: Dynamic MCP Gateway & Lazy Tool Router (v1.4.0)\n"
         "  Engineered by Van Schulist (@VanSchulist / Existential Cloud)\n"
         "================================================================="
     )
@@ -142,7 +142,7 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 
 def cmd_inspect(args: argparse.Namespace) -> None:
-    """Dumps the full JSON schema of a specific tool."""
+    """Dumps the full or minified JSON schema of a specific tool."""
     indexer = ToolIndexer()
     for tool in load_demo_tools():
         indexer.register_tool(tool)
@@ -152,7 +152,18 @@ def cmd_inspect(args: argparse.Namespace) -> None:
         print(f"[-] Error: Tool '{args.tool_key}' not found in registry.")
         sys.exit(1)
 
-    print(json.dumps(tool.to_mcp_dict(), indent=2))
+    raw_dict = tool.to_mcp_dict()
+    if getattr(args, "raw", False):
+        print(json.dumps(raw_dict, indent=2))
+        return
+
+    from .minifier import SchemaMinifier
+    minifier = SchemaMinifier()
+    min_dict = minifier.minify_tool(raw_dict)
+    if getattr(args, "stats", False):
+        stats = minifier.calculate_savings(raw_dict, min_dict)
+        print(f"// AST Minification Savings: {stats.raw_tokens} -> {stats.minified_tokens} tokens ({stats.tokens_saved} tokens saved, {stats.savings_ratio*100:.1f}%)")
+    print(json.dumps(min_dict, indent=2))
 
 
 def cmd_demo(args: argparse.Namespace) -> None:
@@ -302,7 +313,7 @@ def main() -> None:
         description="The Dynamic Model Context Protocol Gateway & Lazy Tool Router.",
     )
     parser.add_argument("--demo", "-d", action="store_true", help="Run interactive zero-config demonstration and benchmark")
-    parser.add_argument("--version", "-v", action="version", version="%(prog)s 1.3.0")
+    parser.add_argument("--version", "-v", action="version", version="%(prog)s 1.4.0")
     subparsers = parser.add_subparsers(dest="subcommand", help="Available subcommands")
 
     # Command: run
@@ -326,8 +337,10 @@ def main() -> None:
     p_search.add_argument("--federate", "-f", action="store_true", help="Search across live federated system MCP tools")
 
     # Command: inspect
-    p_inspect = subparsers.add_parser("inspect", help="Inspect full JSON schema for an indexed tool")
+    p_inspect = subparsers.add_parser("inspect", help="Inspect JSON schema for an indexed tool (AST-minified by default)")
     p_inspect.add_argument("tool_key", type=str, help="Tool name or server_id::tool_name")
+    p_inspect.add_argument("--raw", action="store_true", help="Display raw un-minified schema")
+    p_inspect.add_argument("--stats", action="store_true", help="Display minification token savings breakdown")
 
     # Command: doctor
     p_doctor = subparsers.add_parser("doctor", help="Run comprehensive diagnostic health check on MCP environment and tools")

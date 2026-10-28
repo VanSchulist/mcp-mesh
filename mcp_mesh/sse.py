@@ -219,7 +219,7 @@ class MCPMeshSSEHandler(BaseHTTPRequestHandler):
             self._send_json_response(200, {
                 "status": "healthy",
                 "service": "mcp-mesh",
-                "version": "1.3.0",
+                "version": "1.4.0",
                 "transport": "sse",
                 "tools_indexed": len(self.gateway.indexer.tools),
                 "auth_required": self.auth_token is not None,

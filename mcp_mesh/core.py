@@ -103,6 +103,11 @@ class ToolDefinition:
             },
         }
 
+    def to_minified_dict(self, max_desc_tokens: int = 60) -> Dict[str, Any]:
+        """Converts into AST-minified tool schema format for Turn-1 token optimization."""
+        from .minifier import minify_tool_schema
+        return minify_tool_schema(self.to_mcp_dict(), max_desc_tokens=max_desc_tokens)
+
 
 @dataclass
 class DownstreamServerConfig:
